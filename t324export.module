@@ -1,0 +1,969 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function t324export_menu() {
+    $items = [];
+    $items['admin/export/docsets'] = [
+        'title' => 'Export Document Set Stats Report',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => [
+            't324export_doc_sets_stats_form',
+        ],
+        'access callback' => 'user_has_role',
+        'access arguments' => array('9'),
+    ];
+    $items['admin/export/assignments'] = [
+        'title' => 'Export Assignment Stats Report',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => [
+            't324export_assignment_stats_form',
+        ],
+        'access callback' => 'user_has_role',
+        'access arguments' => array('9'),
+    ];
+    $items['admin/export/download/%'] = [
+        'title' => 'Downloading export file...',
+        'page callback' => 't324export_download_file',
+        'page arguments' => [3],
+        'access callback' => 'user_has_role',
+        'access arguments' => array('9'),
+    ];
+    return $items;
+}
+
+function superuser_only() {
+    global $user;
+    return $user->uid == 1;
+}
+
+function t324export_download_file($filename) {
+    $filepath = 'temporary://' . $filename;
+    file_transfer($filepath, array('Content-Type' => 'application/octet-stream',
+        'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        'Content-Length' => filesize($filepath)));
+}
+
+function t324export_doc_sets_stats_form($form, &$form_state) {
+    $form['batch_size'] = [
+        '#type' => 'textfield',
+        '#title' => 'Select batch size',
+        '#default_value' => 5,
+        '#required' => TRUE,
+    ];
+    $form['min_first_pass_time'] = [
+        '#type' => 'textfield',
+        '#title' => 'Minimum first pass time',
+        '#description' => 'The minimum amount of time (specified in seconds) to produce a single first pass record.  Time records shorter than this will be considered outliers and increased to this time.',
+        '#default_value' => 5,
+        '#required' => TRUE,
+    ];
+    $form['max_first_pass_time'] = [
+        '#type' => 'textfield',
+        '#title' => 'Maximum first pass time',
+        '#description' => 'The maximum amount of time (specified in seconds) to produce a single first pass record.  Time records longer than this will be considered outliers and reduced to this time.',
+        '#default_value' => 60,
+        '#required' => TRUE,
+    ];
+    $form['min_second_pass_time'] = [
+        '#type' => 'textfield',
+        '#title' => 'Minimum second pass time',
+        '#description' => 'The minimum amount of time (specified in seconds) to produce a single second pass record.  Time records shorter than this will be considered outliers and increased to this time.',
+        '#default_value' => 15,
+        '#required' => TRUE,
+    ];
+    $form['max_second_pass_time'] = [
+        '#type' => 'textfield',
+        '#title' => 'Maximum second pass time',
+        '#description' => 'The maximum amount of time (specified in seconds) to produce a single second pass record.  Time records longer than this will be considered outliers and reduced to this time.',
+        '#default_value' => 300,
+        '#required' => TRUE,
+    ];
+    $form['submit'] = [
+        '#type' => 'submit',
+        '#value' => 'Begin Export',
+    ];
+    return $form;
+}
+
+function t324export_assignment_stats_form($form, &$form_state) {
+    $form['batch_size'] = [
+        '#type' => 'textfield',
+        '#title' => 'Select batch size',
+        '#default_value' => 5,
+        '#required' => TRUE,
+    ];
+    $form['min_first_pass_time'] = [
+        '#type' => 'textfield',
+        '#title' => 'Minimum first pass time',
+        '#description' => 'The minimum amount of time (specified in seconds) to produce a single first pass record.  Time records shorter than this will be considered outliers and increased to this time.',
+        '#default_value' => 5,
+        '#required' => TRUE,
+    ];
+    $form['max_first_pass_time'] = [
+        '#type' => 'textfield',
+        '#title' => 'Maximum first pass time',
+        '#description' => 'The maximum amount of time (specified in seconds) to produce a single first pass record.  Time records longer than this will be considered outliers and reduced to this time.',
+        '#default_value' => 60,
+        '#required' => TRUE,
+    ];
+    $form['min_second_pass_time'] = [
+        '#type' => 'textfield',
+        '#title' => 'Minimum second pass time',
+        '#description' => 'The minimum amount of time (specified in seconds) to produce a single second pass record.  Time records shorter than this will be considered outliers and increased to this time.',
+        '#default_value' => 15,
+        '#required' => TRUE,
+    ];
+    $form['max_second_pass_time'] = [
+        '#type' => 'textfield',
+        '#title' => 'Maximum second pass time',
+        '#description' => 'The maximum amount of time (specified in seconds) to produce a single second pass record.  Time records longer than this will be considered outliers and reduced to this time.',
+        '#default_value' => 300,
+        '#required' => TRUE,
+    ];
+    $form['submit'] = [
+        '#type' => 'submit',
+        '#value' => 'Begin Export',
+    ];
+    return $form;
+}
+
+function t324export_doc_sets_stats_form_submit($form, &$form_state) {
+    $limit = !empty($form_state['values']['batch_size']) ? $form_state['values']['batch_size'] : 5;
+    $settings = [
+        'min_first_pass_time' => $form_state['values']['min_first_pass_time'],
+        'max_first_pass_time' => $form_state['values']['max_first_pass_time'],
+        'min_second_pass_time' => $form_state['values']['min_second_pass_time'],
+        'max_second_pass_time' => $form_state['values']['max_second_pass_time'],
+    ];
+    $batch_settings = [
+        'operations' => [
+            ['t324export_doc_set_stats_batch', [$limit, $settings]],
+        ],
+        'finished' => 't324export_doc_set_stats_finished',
+    ];
+    batch_set($batch_settings);
+}
+
+function t324export_assignment_stats_form_submit($form, &$form_state) {
+    $limit = !empty($form_state['values']['batch_size']) ? $form_state['values']['batch_size'] : 5;
+    $settings = [
+        'min_first_pass_time' => $form_state['values']['min_first_pass_time'],
+        'max_first_pass_time' => $form_state['values']['max_first_pass_time'],
+        'min_second_pass_time' => $form_state['values']['min_second_pass_time'],
+        'max_second_pass_time' => $form_state['values']['max_second_pass_time'],
+    ];
+    $batch_settings = [
+        'operations' => [
+            ['t324export_assignment_stats_batch', [$limit, $settings]],
+        ],
+        'finished' => 't324export_assignment_stats_finished',
+    ];
+    batch_set($batch_settings);
+}
+
+/**
+ * Batch operation to export list subscribers.
+ */
+function t324export_doc_set_stats_batch($limit, $settings, &$context) {
+
+    if(empty($limit) || !is_integer($limit) || $limit < 1) {
+        $limit = 5;
+    }
+
+    $context['finished'] = 0;
+
+    if (!isset($context['sandbox']['file'])) {
+
+        $query = db_select('field_collection_item', 'fci');
+        $query->condition('fci.field_name', 'field_office_retrieval_records');
+        $query->addField('fci','item_id','id');
+        //$query->range(0,20);
+        $results = $query->execute();
+        $list = $results->fetchCol();
+
+        $headers = [
+            'Case #',
+            'Case Type',
+            'Doc Set #',
+            'Records (Total)',
+            'Records (T2)',
+            'Records (T1)',
+            'Records (Admin)',
+            'Records (Duplicate)',
+            'Records (Illegible)',
+            'Records (Not Relevant)',
+            'Pages (Total)',
+            'Pages (T2)',
+            'Pages (T1)',
+            'Pages (Admin)',
+            'Pages (Duplicate)',
+            'Pages (Illegible)',
+            'Pages (Not Relevant)',
+            'Total Time (First Pass)',
+            'Total Time (Second Pass)',
+            'Avg Time Per Page (First Pass)',
+            'Avg Time Per Page (Second Pass)',
+            'Date Started',
+            'Date Completed',
+        ];
+
+        // Create the file and print the labels in the header row.
+        $filename = 'redocs_doc_set_stats_' . date('Y-m-d-') . rand(100000, 999999) . '.csv';
+        $file_path = file_directory_temp() . '/' . $filename;
+        $handle = fopen($file_path, 'w'); // Create the file.
+        fputcsv($handle, $headers); // Write the labels to the header row.
+        fclose($handle);
+
+        // Store file path, docsets, and running total in $context.
+        $context['sandbox']['file'] = $file_path;
+        $context['sandbox']['docsets'] = $list;
+        $context['sandbox']['docsets_total'] = count($list);
+
+        // Store some values in the results array for processing when finshed.
+        $context['results']['filename'] = $filename;
+        $context['results']['file'] = $file_path;
+    }
+
+    // Accounting.
+    if (!isset($context['results']['count'])) {
+        $context['results']['count'] = 0;
+    }
+
+    // Open the file for writing ('a' puts pointer at end of file).
+    $handle = fopen($context['sandbox']['file'], 'a');
+
+    // Loop until we hit the batch limit.
+    for ($i = 0; $i < $limit; $i++) {
+        $number_remaining = count($context['sandbox']['docsets']);
+
+        if ($number_remaining) {
+            $docset_id = $context['sandbox']['docsets'][$context['results']['count']];
+
+            $docset_stats = t324export_get_doc_set_stats($docset_id, $settings);
+
+            if(!empty($docset_stats)) {
+                fputcsv($handle, $docset_stats);
+            }
+
+            // Remove the docset id from $context.
+            unset($context['sandbox']['docsets'][$context['results']['count']]);
+
+            // Increment the counter.
+            $context['results']['count']++;
+            $context['finished'] = $context['results']['count'] / $context['sandbox']['docsets_total'];
+        }
+        // If there are no docsets remaining, we're finished.
+        else {
+            $context['finished'] = 1;
+            break;
+        }
+    }
+
+    // Close the file.
+    fclose($handle);
+
+    // Show message updating user on how many docsets have been exported.
+    $context['message'] = t('Exported @count of @total document sets.', array(
+        '@count' => $context['results']['count'],
+        '@total' => $context['sandbox']['docsets_total'],
+    ));
+}
+
+function t324export_get_doc_set_stats($docset_id, $settings) {
+    $docset = entity_load_single('field_collection_item', $docset_id);
+
+    if(empty($docset)) {
+        return NULL;
+    }
+
+    $data_case_num =
+    $data_case_type =
+    $data_docset_num =
+    $data_records_total =
+    $data_records_t2 =
+    $data_records_t1 =
+    $data_records_admin =
+    $data_records_duplicate =
+    $data_records_illegible =
+    $data_records_not_relevant =
+    $data_pages_total =
+    $data_pages_t2 =
+    $data_pages_t1 =
+    $data_pages_admin =
+    $data_pages_duplicate =
+    $data_pages_illegible =
+    $data_pages_not_relevant =
+    $data_total_time_first_pass =
+    $data_total_time_second_pass =
+    $data_avg_time_per_page_first_pass =
+    $data_avg_time_per_page_second_pass =
+    $data_avg_time_per_page_second_pass_divisor =
+    $data_date_started =
+    $data_date_completed = 0;
+
+    $docsetwrap = entity_metadata_wrapper('field_collection_item', $docset);
+
+    if($docsetwrap->field_document_set_status->getIdentifier() === 15655) {
+        return NULL;
+    }
+
+    $case = $docset->hostEntity();
+
+    if(empty($case->nid)) {
+        return NULL;
+    }
+
+    $casewrap = entity_metadata_wrapper('node', $case);
+
+    if($casewrap->field_case_type->name->value() == "Test") {
+        return NULL;
+    }
+
+    $data_case_type = $casewrap->field_case_type->name->value();
+
+    $data_case_num = $casewrap->field_case_id->value();
+    $data_docset_num = $docsetwrap->field_document_set_number->value();
+
+    $file_record_ids = $docsetwrap->field_file_record->raw();
+
+    if(empty($file_record_ids)) {
+        return NULL;
+    }
+
+    $query = db_select('node', 'n');
+    $query->condition('n.type', 'flag_record');
+    $query->addJoin('inner', 'field_data_field_associated_collection', 'fac', 'fac.entity_id = n.nid');
+    $query->condition('fac.field_associated_collection_target_id', $file_record_ids, 'IN');
+    $query->addJoin('inner', 'field_data_field_flag_message', 'ffm', 'ffm.entity_id = n.nid');
+    $query->condition('ffm.field_flag_message_value', '1st Pass Abstraction Accepted');
+    $query->addField('n', 'nid', 'nid');
+    $results = $query->execute();
+    $flag_record_nids = $results->fetchCol();
+    $flag_records = entity_load('node', $flag_record_nids);
+
+    foreach($flag_records as $flag_record) {
+        $flag_record_wrap = entity_metadata_wrapper('node', $flag_record);
+        if($data_date_started == 0 || $data_date_started > $flag_record_wrap->created->value()) {
+            $data_date_started = $flag_record_wrap->created->value();
+        }
+    }
+
+    if(empty($data_date_started)) {
+        foreach($docsetwrap->field_file_record->getIterator() as $file_record_wrap) {
+            if(!empty($file_record_wrap->field_date_accepted->value())) {
+                if($data_date_started == 0 || $data_date_started > $file_record_wrap->field_date_accepted->value()) {
+                    $data_date_started = $file_record_wrap->field_date_accepted->value();
+                }
+            } elseif(!empty($file_record_wrap->field_date_assigned->value())) {
+                if($data_date_started == 0 || $data_date_started > $file_record_wrap->field_date_assigned->value()) {
+                    $data_date_started = $file_record_wrap->field_date_assigned->value();
+                }
+            } elseif(!empty($docsetwrap->field_approved_date->value())) {
+                if($data_date_started == 0 || $data_date_started > $docsetwrap->field_approved_date->value()) {
+                    $data_date_started = $docsetwrap->field_approved_date->value();
+                }
+            } elseif(!empty($file_record_wrap->field_file->value()['timestamp'])) {
+                if($data_date_started == 0) {
+                    $data_date_started = $file_record_wrap->field_file->value()['timestamp'];
+                }
+            }
+        }
+    }
+
+    $query = db_select('node', 'n');
+    $query->condition('n.type', 'flag_record');
+    $query->addJoin('inner', 'field_data_field_associated_collection', 'fac', 'fac.entity_id = n.nid');
+    $query->condition('fac.field_associated_collection_target_id', $file_record_ids, 'IN');
+    $query->addJoin('inner', 'field_data_field_flag_message', 'ffm', 'ffm.entity_id = n.nid');
+    $query->condition('ffm.field_flag_message_value', 'File abstraction completed');
+    $query->addField('n', 'nid', 'nid');
+    $results = $query->execute();
+    $flag_record_nids = $results->fetchCol();
+    $flag_records = entity_load('node', $flag_record_nids);
+
+    foreach($flag_records as $flag_record) {
+        $flag_record_wrap = entity_metadata_wrapper('node', $flag_record);
+        if($data_date_completed == 0 || $data_date_completed < $flag_record_wrap->created->value()) {
+            $data_date_completed = $flag_record_wrap->created->value();
+        }
+    }
+
+    $query = db_select('node', 'n');
+    $query->condition('n.type', 'medical_record');
+    $query->addJoin('inner', 'field_data_field_file_record_reference', 'frr', "frr.entity_id = n.nid");
+    $query->condition('frr.bundle', 'medical_record');
+    $query->condition('frr.field_file_record_reference_target_id', $file_record_ids, 'IN');
+    $query->addField('n', 'nid', 'nid');
+    $results = $query->execute();
+    $record_nids = $results->fetchCol();
+    $records = entity_load('node', $record_nids);
+
+    foreach($records as $record) {
+        $recordwrap = entity_metadata_wrapper('node', $record);
+        $data_records_total++;
+        $pagecount = $recordwrap->field_page_count->value();
+
+        $data_pages_total += $pagecount;
+
+        $segment_identity = $recordwrap->field_segment_identity->getIdentifier();
+
+        $first_pass_time = $recordwrap->field_tier_1_time->value() ? $recordwrap->field_tier_1_time->value() : 5;
+        if($first_pass_time < $settings['min_first_pass_time']) {
+            $first_pass_time = $settings['min_first_pass_time'];
+        }
+        if($first_pass_time > $settings['max_first_pass_time']) {
+            $first_pass_time = $settings['max_first_pass_time'];
+        }
+        $data_total_time_first_pass += $first_pass_time;
+
+        switch($segment_identity) {
+            case 15658: // T2
+                $data_records_t2++;
+                $data_pages_t2 += $pagecount;
+                if(!empty($recordwrap->field_tier_2_time->value())) {
+                    $data_avg_time_per_page_second_pass_divisor += $pagecount;
+                    $second_pass_time = $recordwrap->field_tier_2_time->value();
+                    if($second_pass_time < $settings['min_second_pass_time']) {
+                        $second_pass_time = $settings['min_second_pass_time'];
+                    }
+                    if($second_pass_time > $settings['max_second_pass_time']) {
+                        $second_pass_time = $settings['max_second_pass_time'];
+                    }
+                }
+                $data_total_time_second_pass += $second_pass_time;
+                break;
+            case 15657: // T1
+                $data_records_t1++;
+                $data_pages_t1 += $pagecount;
+                break;
+            case 15659: // Admin
+                $data_records_admin++;
+                $data_pages_admin += $pagecount;
+                break;
+            case 15660: // Duplicate
+                $data_records_duplicate++;
+                $data_pages_duplicate += $pagecount;
+                break;
+            case 15661: // Illegible
+                $data_records_illegible++;
+                $data_pages_illegible += $pagecount;
+                break;
+            case 15662: // Not Relevant
+                $data_records_not_relevant++;
+                $data_pages_not_relevant += $pagecount;
+                break;
+        }
+    }
+
+    if($data_pages_total) {
+        $data_avg_time_per_page_first_pass = round($data_total_time_first_pass / $data_pages_total);
+    }
+    if($data_pages_t2) {
+        $data_avg_time_per_page_second_pass = round($data_total_time_second_pass / $data_pages_t2);
+    }
+
+    return [
+        $data_case_num,
+        $data_case_type,
+        $data_docset_num,
+        $data_records_total,
+        $data_records_t2,
+        $data_records_t1,
+        $data_records_admin,
+        $data_records_duplicate,
+        $data_records_illegible,
+        $data_records_not_relevant,
+        $data_pages_total,
+        $data_pages_t2,
+        $data_pages_t1,
+        $data_pages_admin,
+        $data_pages_duplicate,
+        $data_pages_illegible,
+        $data_pages_not_relevant,
+        $data_total_time_first_pass,
+        $data_total_time_second_pass,
+        $data_avg_time_per_page_first_pass,
+        $data_avg_time_per_page_second_pass,
+        $data_date_started ? date('Y-m-d h:ia', $data_date_started) : '',
+        $data_date_completed ? date('Y-m-d h:ia', $data_date_completed) : '',
+    ];
+}
+
+/**
+ * Batch operation to export list subscribers.
+ */
+function t324export_assignment_stats_batch($limit, $settings, &$context) {
+
+    if(empty($limit) || !is_integer($limit) || $limit < 1) {
+        $limit = 5;
+    }
+
+    $context['finished'] = 0;
+
+    if (!isset($context['sandbox']['file'])) {
+
+        $query = db_select('node', 'n');
+        $query->condition('n.type', 'case');
+        $query->addField('n', 'nid', 'nid');
+        //$query->range(0,30);
+        $results = $query->execute();
+        $list = $results->fetchCol();
+
+        $headers = [
+            'Case #',
+            'Type',
+            'Abstraction',
+            'Abstractor',
+            'Assignment Date',
+            'Completion Date',
+            'Doc Set',
+            'Records',
+            'Pages',
+            'Records Completed (SP)',
+            'Pages Completed (SP)',
+            'Total Time',
+            'Avg Time Per Page',
+            'Duplicate Records',
+            'Duplicate Pages',
+        ];
+
+        // Create the file and print the labels in the header row.
+        $filename = 'redocs_assignment_stats_' . date('Y-m-d-') . rand(100000, 999999) . '.csv';
+        $file_path = file_directory_temp() . '/' . $filename;
+        $handle = fopen($file_path, 'w'); // Create the file.
+        fputcsv($handle, $headers); // Write the labels to the header row.
+        fclose($handle);
+
+        // Store file path, assignments, and running total in $context.
+        $context['sandbox']['file'] = $file_path;
+        $context['sandbox']['cases'] = $list;
+        $context['sandbox']['cases_total'] = count($list);
+
+        // Store some values in the results array for processing when finished.
+        $context['results']['filename'] = $filename;
+        $context['results']['file'] = $file_path;
+    }
+
+    // Accounting.
+    if (!isset($context['results']['count'])) {
+        $context['results']['count'] = 0;
+    }
+
+    // Open the file for writing ('a' puts pointer at end of file).
+    $handle = fopen($context['sandbox']['file'], 'a');
+
+    // Loop until we hit the batch limit.
+    for ($i = 0; $i < $limit; $i++) {
+        $number_remaining = count($context['sandbox']['cases']);
+
+        if ($number_remaining) {
+            $case_nid = $context['sandbox']['cases'][$context['results']['count']];
+
+            $case = entity_load_single('node', $case_nid);
+            if(empty($case)) {
+                unset($context['sandbox']['cases'][$context['results']['count']]);
+                $context['results']['count']++;
+                $context['finished'] = $context['results']['count'] / $context['sandbox']['cases_total'];
+                continue;
+            }
+
+            $casewrap = entity_metadata_wrapper('node', $case);
+
+            if($casewrap->field_case_type->name->value() == "Test") {
+                unset($context['sandbox']['cases'][$context['results']['count']]);
+                $context['results']['count']++;
+                $context['finished'] = $context['results']['count'] / $context['sandbox']['cases_total'];
+                continue;
+            }
+
+            $case_assignment_stats = t324export_get_case_assignment_stats($case_nid, $settings);
+
+            if(empty($case_assignment_stats)) {
+                unset($context['sandbox']['cases'][$context['results']['count']]);
+                $context['results']['count']++;
+                $context['finished'] = $context['results']['count'] / $context['sandbox']['cases_total'];
+                continue;
+            }
+
+            foreach($case_assignment_stats['first_pass'] as $uid => $first_passes) {
+                $abstractor = user_load($uid);
+                $abstractorwrap = entity_metadata_wrapper('user', $abstractor);
+                foreach($first_passes as $date => $first_pass) {
+                    foreach($first_pass as $docset => $stats) {
+                        if(empty($stats['count'])) {
+                            continue;
+                        }
+                        $assignment_stats = [
+                            $casewrap->field_case_id->value(),
+                            $casewrap->field_case_type->name->value(),
+                            'First Pass',
+                            $abstractorwrap->label(),
+                            $date ? date('Y-m-d h:ia', ($date * 60)) : '',
+                            $stats['end_date'] ? date('Y-m-d h:ia', $stats['end_date']) : '',
+                            $docset,
+                            $stats['count'],
+                            $stats['pages'],
+                            '',
+                            '',
+                            $stats['time'],
+                            round($stats['time'] / $stats['pages']),
+                            '',
+                            '',
+                        ];
+                        fputcsv($handle, $assignment_stats);
+                    }
+                }
+            }
+
+            foreach($case_assignment_stats['second_pass'] as $uid => $second_pass) {
+                $abstractor = user_load($uid);
+                $abstractorwrap = entity_metadata_wrapper('user', $abstractor);
+                $assignment_stats = [
+                    $casewrap->field_case_id->value(),
+                    $casewrap->field_case_type->name->value(),
+                    'Second Pass',
+                    $abstractorwrap->label(),
+                    $second_pass['start_date'] ? date('Y-m-d h:ia', $second_pass['start_date']) : '',
+                    $second_pass['end_date'] ? date('Y-m-d h:ia', $second_pass['end_date']) : '',
+                    '',
+                    $second_pass['records_assigned'],
+                    $second_pass['pages_assigned'],
+                    $second_pass['records_completed'],
+                    $second_pass['pages_completed'],
+                    $second_pass['time'],
+                    round($second_pass['time'] / $second_pass['pages_completed']),
+                    $second_pass['dup_records'],
+                    $second_pass['dup_pages'],
+                ];
+                fputcsv($handle, $assignment_stats);
+            }
+
+            // Remove the case nid from $context.
+            unset($context['sandbox']['cases'][$context['results']['count']]);
+
+            // Increment the counter.
+            $context['results']['count']++;
+            $context['finished'] = $context['results']['count'] / $context['sandbox']['cases_total'];
+        }
+        // If there are no assignments remaining, we're finished.
+        else {
+            $context['finished'] = 1;
+            break;
+        }
+    }
+
+    // Close the file.
+    fclose($handle);
+
+    // Show message updating user on how many assignments have been exported.
+    $context['message'] = t('Exported @count of @total cases.', array(
+        '@count' => $context['results']['count'],
+        '@total' => $context['sandbox']['cases_total'],
+    ));
+}
+
+function t324export_get_case_assignment_stats($case_nid, $settings) {
+    $case = entity_load_single('node', $case_nid);
+    $casewrap = entity_metadata_wrapper('node', $case);
+    $casetype = $casewrap->field_case_type->name->value();
+
+    $firstpass_assignments = [];
+    foreach($casewrap->field_office_retrieval_records->getIterator() as $docsetwrap) {
+        if(!empty($docsetwrap->field_document_set_status->value()) && $docsetwrap->field_document_set_status->tid->value() != 15656) {
+            foreach($docsetwrap->field_file_record->raw() as $doc_id) {
+                $doc = entity_load_single('field_collection_item', $doc_id);
+                $docwrap = entity_metadata_wrapper('field_collection_item', $doc);
+
+                $data_date_started = 0;
+                $data_date_completed = 0;
+
+                $query = db_select('node', 'n');
+                $query->condition('n.type', 'flag_record');
+                $query->addJoin('inner', 'field_data_field_associated_collection', 'fac', 'fac.entity_id = n.nid');
+                $query->condition('fac.field_associated_collection_target_id', $doc_id);
+                $query->addJoin('inner', 'field_data_field_flag_message', 'ffm', 'ffm.entity_id = n.nid');
+                $query->condition('ffm.field_flag_message_value', '1st Pass Abstraction Accepted');
+                $query->addField('n', 'nid', 'nid');
+                $results = $query->execute();
+                $flag_record_nids = $results->fetchCol();
+                $flag_records = entity_load('node', $flag_record_nids);
+
+                foreach($flag_records as $flag_record) {
+                    $flag_record_wrap = entity_metadata_wrapper('node', $flag_record);
+                    if($data_date_started == 0 || $data_date_started > $flag_record_wrap->created->value()) {
+                        $data_date_started = $flag_record_wrap->created->value();
+                    }
+                }
+
+                if(empty($data_date_started)) {
+                    foreach($docsetwrap->field_file_record->getIterator() as $file_record_wrap) {
+                        if($file_record_wrap->field_date_accepted->value()) {
+                            if($data_date_started == 0 || $data_date_started > $file_record_wrap->field_date_accepted->value()) {
+                                $data_date_started = $file_record_wrap->field_date_accepted->value();
+                            }
+                        } elseif($file_record_wrap->field_date_assigned->value()) {
+                            if($data_date_started == 0 || $data_date_started > $file_record_wrap->field_date_assigned->value()) {
+                                $data_date_started = $file_record_wrap->field_date_assigned->value();
+                            }
+                        } elseif($docsetwrap->field_approved_date->value()) {
+                            if($data_date_started == 0 || $data_date_started > $docsetwrap->field_approved_date->value()) {
+                                $data_date_started = $docsetwrap->field_approved_date->value();
+                            }
+                        } elseif(!empty($file_record_wrap->field_file->value()['timestamp'])) {
+                            if($data_date_started == 0) {
+                                $data_date_started = $file_record_wrap->field_file->value()['timestamp'];
+                            }
+                        }
+                    }
+                }
+
+                if(empty($data_date_started)) {
+                    $data_date_started = 0;
+                } else {
+                    $data_date_started = floor($data_date_started / 60);
+                }
+
+                $query = db_select('node', 'n');
+                $query->condition('n.type', 'flag_record');
+                $query->addJoin('inner', 'field_data_field_associated_collection', 'fac', 'fac.entity_id = n.nid');
+                $query->condition('fac.field_associated_collection_target_id', $doc_id);
+                $query->addJoin('inner', 'field_data_field_flag_message', 'ffm', 'ffm.entity_id = n.nid');
+                $query->condition('ffm.field_flag_message_value', 'File abstraction completed');
+                $query->addField('n', 'nid', 'nid');
+                $results = $query->execute();
+                $flag_record_nids = $results->fetchCol();
+                $flag_records = entity_load('node', $flag_record_nids);
+
+                foreach($flag_records as $flag_record) {
+                    $flag_record_wrap = entity_metadata_wrapper('node', $flag_record);
+                    if($data_date_completed == 0 || $data_date_completed < $flag_record_wrap->created->value()) {
+                        $data_date_completed = $flag_record_wrap->created->value();
+                    }
+                }
+
+                $query = db_select('node', 'n');
+                $query->condition('n.type', 'medical_record');
+                $query->addJoin('inner', 'field_data_field_medical_records', 'fmr', "fmr.field_medical_records_target_id = n.nid");
+                $query->condition('fmr.entity_id', $case_nid);
+                $query->addJoin('inner', 'field_data_field_case', 'fc', "fc.entity_id = n.nid");
+                $query->condition('fc.bundle', 'medical_record');
+                $query->condition('fc.field_case_target_id', $case_nid);
+                $query->addJoin('inner', 'field_data_field_file_record_reference', 'frr', "frr.entity_id = n.nid");
+                $query->condition('frr.bundle', 'medical_record');
+                $query->condition('frr.field_file_record_reference_target_id', $docwrap->getIdentifier());
+                $query->addJoin('inner', 'field_data_field_file_record', 'ffr', "ffr.field_file_record_value = frr.field_file_record_reference_target_id");
+                $query->addJoin('inner', 'field_data_field_document_set_number', 'dsn', "dsn.entity_id = ffr.entity_id");
+                $query->addJoin('left', 'field_data_field_tier_1_time', 'tt', "tt.entity_id = n.nid AND tt.bundle = 'medical_record'");
+                $query->addJoin('inner', 'field_data_field_page_count', 'pc', "pc.entity_id = n.nid AND pc.bundle = 'medical_record'");
+                $query->addField('n', 'uid', 'uid');
+                $query->addField('dsn', 'field_document_set_number_value', 'docset');
+                $query->addField('pc', 'field_page_count_value', 'pages');
+                $query->addField('tt', 'field_tier_1_time_value', 'time');
+                $results = $query->execute();
+                while($record = $results->fetchAssoc()) {
+                    if(!empty($record['pages']) && !empty($record['uid'])) {
+                        $uid = $record['uid'];
+                        if(!isset($firstpass_assignments[$uid][$data_date_started][$record['docset']])) {
+                            $firstpass_assignments[$uid][$data_date_started][$record['docset']] = [
+                              'end_date' => 0,
+                              'count' => 0,
+                              'pages' => 0,
+                              'time' => 0,
+                            ];
+                        }
+                        if($firstpass_assignments[$uid][$data_date_started][$record['docset']]['end_date'] < $data_date_completed) {
+                            $firstpass_assignments[$uid][$data_date_started][$record['docset']]['end_date'] = $data_date_completed;
+                        }
+                        $firstpass_assignments[$uid][$data_date_started][$record['docset']]['count']++;
+                        $firstpass_assignments[$uid][$data_date_started][$record['docset']]['pages'] += $record['pages'];
+                        $first_pass_time = $record['time'] ? $record['time'] : 5;
+                        if($first_pass_time < $settings['min_first_pass_time']) {
+                            $first_pass_time = $settings['min_first_pass_time'];
+                        }
+                        if($first_pass_time > $settings['max_first_pass_time']) {
+                            $first_pass_time = $settings['max_first_pass_time'];
+                        }
+                        $firstpass_assignments[$uid][$data_date_started][$record['docset']]['time'] += $first_pass_time;
+                    }
+                }
+            }
+        }
+    }
+    $secondpass_assignments = [];
+    if(!empty($casewrap->field_2nd_pass_assignments->value())) {
+        foreach($casewrap->field_2nd_pass_assignments->field_assignments->getIterator() as $assignmentwrap) {
+            $data_date_started = 0;
+            $data_date_completed = 0;
+
+            if(empty($assignmentwrap->field_abstractor->value())) {
+                continue;
+            }
+
+            $uid = $assignmentwrap->field_abstractor->uid->value();
+
+            if(!isset($secondpass_assignments[$uid])) {
+                $secondpass_assignments[$uid] = [
+                    'start_date' => 0,
+                    'end_date' => 0,
+                    'records_assigned' => 0,
+                    'pages_assigned' => 0,
+                    'records_completed' => 0,
+                    'pages_completed' => 0,
+                    'dup_records' => 0,
+                    'dup_pages' => 0,
+                    'time' => 0,
+                ];
+            }
+
+            $data_records_assigned = $assignmentwrap->field_assign_record_count->value();
+            $data_pages_assigned = $assignmentwrap->field_assign_page_count->value();
+
+            $secondpass_assignments[$uid]['records_assigned'] += $data_records_assigned;
+            $secondpass_assignments[$uid]['pages_assigned'] += $data_pages_assigned;
+
+            $query = db_select('node', 'n');
+            $query->condition('n.type', 'flag_record');
+            $query->addJoin('inner', 'field_data_field_associated_collection', 'fac', 'fac.entity_id = n.nid');
+            $query->condition('fac.field_associated_collection_target_id', $assignmentwrap->getIdentifier());
+            $query->addJoin('inner', 'field_data_field_flag_message', 'ffm', 'ffm.entity_id = n.nid');
+            $query->condition('ffm.field_flag_message_value', '2nd Pass Abstraction Accepted');
+            $query->addField('n', 'nid', 'nid');
+            $results = $query->execute();
+            $flag_record_nids = $results->fetchCol();
+            $flag_records = entity_load('node', $flag_record_nids);
+
+            foreach($flag_records as $flag_record) {
+                $flag_record_wrap = entity_metadata_wrapper('node', $flag_record);
+                if($data_date_started == 0 || $data_date_started > $flag_record_wrap->created->value()) {
+                    $data_date_started = $flag_record_wrap->created->value();
+                }
+            }
+
+            if(empty($data_date_started)) {
+                if ($assignmentwrap->field_date_accepted->value()) {
+                    if ($data_date_started == 0 || $data_date_started > $assignmentwrap->field_date_accepted->value()) {
+                        $data_date_started = $assignmentwrap->field_date_accepted->value();
+                    }
+                } elseif ($assignmentwrap->field_date_assigned->value()) {
+                    if ($data_date_started == 0) {
+                        $data_date_started = $assignmentwrap->field_date_assigned->value();
+                    }
+                }
+            }
+
+            $query = db_select('node', 'n');
+            $query->condition('n.type', 'flag_record');
+            $query->addJoin('inner', 'field_data_field_associated_collection', 'fac', 'fac.entity_id = n.nid');
+            $query->condition('fac.field_associated_collection_target_id', $assignmentwrap->getIdentifier());
+            $query->addJoin('inner', 'field_data_field_flag_message', 'ffm', 'ffm.entity_id = n.nid');
+            $query->condition('ffm.field_flag_message_value', '2nd Pass Abstraction Complete');
+            $query->addField('n', 'nid', 'nid');
+            $results = $query->execute();
+            $flag_record_nids = $results->fetchCol();
+            $flag_records = entity_load('node', $flag_record_nids);
+
+            foreach($flag_records as $flag_record) {
+                $flag_record_wrap = entity_metadata_wrapper('node', $flag_record);
+                if($data_date_completed == 0 || $data_date_completed < $flag_record_wrap->created->value()) {
+                    $data_date_completed = $flag_record_wrap->created->value();
+                }
+            }
+
+            if($secondpass_assignments[$uid]['start_date'] == 0 ||
+               $secondpass_assignments[$uid]['start_date'] > $data_date_started) {
+                $secondpass_assignments[$uid]['start_date'] = $data_date_started;
+            }
+            if($secondpass_assignments[$uid]['end_date'] == 0 ||
+                $secondpass_assignments[$uid]['end_date'] > $data_date_completed) {
+                $secondpass_assignments[$uid]['end_date'] = $data_date_completed;
+            }
+
+            $query = db_select('node', 'n');
+            $query->condition('n.type', 'medical_record');
+            $query->addJoin('inner', 'field_data_field_medical_records', 'fmr', "fmr.field_medical_records_target_id = n.nid");
+            $query->condition('fmr.entity_id', $case_nid);
+            $query->addJoin('inner', 'field_data_field_case', 'fc', "fc.entity_id = n.nid");
+            $query->condition('fc.bundle', 'medical_record');
+            $query->condition('fc.field_case_target_id', $case_nid);
+            $query->addJoin('inner', 'field_data_field_tier_2_abstractor', 'ta', "ta.entity_id = n.nid AND ta.bundle = 'medical_record'");
+            $query->condition('ta.field_tier_2_abstractor_target_id', $uid);
+            $query->addJoin('inner', 'field_data_field_segment_identity', 'fsi', "fsi.entity_id = n.nid");
+            $query->addJoin('left', 'field_data_field_tier_2_time', 'tt', "tt.entity_id = n.nid AND tt.bundle = 'medical_record'");
+            $query->addJoin('inner', 'field_data_field_page_count', 'pc', "pc.entity_id = n.nid AND pc.bundle = 'medical_record'");
+            $query->addField('pc', 'field_page_count_value', 'pages');
+            $query->addField('tt', 'field_tier_2_time_value', 'time');
+            $query->addField('fsi', 'field_segment_identity_tid', 'tid');
+            $results = $query->execute();
+            while($record = $results->fetchAssoc()) {
+                $secondpass_assignments[$uid]['records_completed']++;
+                $secondpass_assignments[$uid]['pages_completed'] += $record['pages'];
+                if($record['tid'] == 15660) {
+                    $secondpass_assignments[$uid]['dup_records']++;
+                    $secondpass_assignments[$uid]['dup_pages'] += $record['pages'];
+                }
+                $second_pass_time = $record['time'];
+                if($second_pass_time < $settings['min_second_pass_time']) {
+                    $second_pass_time = $settings['min_second_pass_time'];
+                }
+                if($second_pass_time > $settings['max_second_pass_time']) {
+                    $second_pass_time = $settings['max_second_pass_time'];
+                }
+                $secondpass_assignments[$uid]['time'] += $second_pass_time;
+            }
+        }
+    }
+
+
+    return [
+        'case_type' => $casetype,
+        'first_pass' => $firstpass_assignments,
+        'second_pass' => $secondpass_assignments,
+    ];
+}
+
+/**
+ * Finish the export.
+ */
+function t324export_doc_set_stats_finished($success, $results, $operations) {
+    if ($success) {
+        drupal_set_message(format_plural($results['count'], 'One document set exported.', '@count document sets exported.'));
+
+        drupal_set_message(t('Download the completed export: <a href="/admin/export/download/' . $results['filename'] . '">%filename</a>', array(
+            '%filename' => $results['filename'],
+        )));
+    }
+    else {
+        drupal_set_message(t('There were errors during the export of this list.'), 'error');
+    }
+}
+
+/**
+ * Finish the export.
+ */
+function t324export_assignment_stats_finished($success, $results, $operations) {
+    if ($success) {
+        drupal_set_message(format_plural($results['count'], 'One case exported.', '@count cases exported.'));
+
+        drupal_set_message(t('Download the completed export: <a href="/admin/export/download/' . $results['filename'] . '">%filename</a>', array(
+            '%filename' => $results['filename'],
+        )));
+    }
+    else {
+        drupal_set_message(t('There were errors during the export of this list.'), 'error');
+    }
+}
+
+function _t324_array2csv(array &$array) {
+    if (count($array) == 0) {
+        return null;
+    }
+    ob_start();
+    $df = fopen("php://output", 'w');
+    foreach ($array as $row) {
+        fputcsv($df, $row);
+    }
+    fclose($df);
+    return ob_get_clean();
+}

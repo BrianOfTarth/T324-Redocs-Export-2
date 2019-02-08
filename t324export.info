@@ -1,0 +1,11 @@
+; $Id: t324logger.info,v 1.0 2014/01/08 10:10:05 briann Exp $
+name = T324 Export
+description = Custom module for T324 export
+package = T324
+core = 7.x
+; Information added by Drupal.org packaging script on 2014-01-08
+version = "7.0"
+core = "7.x"
+project = "t324export"
+datestamp = "1420738832"
+
